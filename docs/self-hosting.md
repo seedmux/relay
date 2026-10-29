@@ -11,7 +11,7 @@ up by hand, or troubleshooting.
 1. Downloads the binary for your OS and CPU, verifies it against `SHA256SUMS`, and puts it
    at `/usr/local/bin/seedmux-relay`.
 2. With a domain, checks that the domain points at this server and that ports 80 and 443
-   are free; without one, checks port 8080. With TURN, also checks 3478.
+   are free; without one, checks port 9876. With TURN, also checks 3478.
 3. Writes the systemd service `/etc/systemd/system/seedmux-relay.service` and enables it
    on boot. State lives in `/var/lib/seedmux-relay`.
 4. If ufw or firewalld is active, opens the ports it needs.
@@ -26,8 +26,8 @@ Options go after `sudo sh -s --`:
 
 | Option | |
 |---|---|
-| `--domain YOUR_DOMAIN` | Use `wss://YOUR_DOMAIN/`; without it you get `ws://IP:8080/` |
-| `--port 9000` | Another port for `ws://` (default 8080) |
+| `--domain YOUR_DOMAIN` | Use `wss://YOUR_DOMAIN/`; without it you get `ws://IP:9876/` |
+| `--port 9000` | Another port for `ws://` (default 9876) |
 | `--no-turn` | No TURN (the phone can then only view the computer's screen on the same network) |
 | `--no-firewall` | Leave ufw and firewalld alone |
 | `--no-service` | Install the binary only |
@@ -37,13 +37,13 @@ Options go after `sudo sh -s --`:
 
 If a website already uses 443 on the server, install the relay the default way (without
 `--domain`) and let nginx or Caddy pass a domain to it. Put `wss://YOUR_DOMAIN/` in
-Seedmux; port 8080 doesn't need to be open in the security group.
+Seedmux; port 9876 doesn't need to be open in the security group.
 
 Caddy (gets the certificate itself):
 
 ```
 YOUR_DOMAIN {
-	reverse_proxy 127.0.0.1:8080
+	reverse_proxy 127.0.0.1:9876
 }
 ```
 
@@ -56,7 +56,7 @@ server {
     # ssl_certificate and ssl_certificate_key as you already have them
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:9876;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -81,7 +81,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/seedmux-relay -addr :8080 -data-dir /var/lib/seedmux-relay -turn
+ExecStart=/usr/local/bin/seedmux-relay -addr :9876 -data-dir /var/lib/seedmux-relay -turn
 DynamicUser=yes
 StateDirectory=seedmux-relay
 AmbientCapabilities=CAP_NET_BIND_SERVICE
@@ -113,7 +113,7 @@ systemctl daemon-reload && systemctl enable --now seedmux-relay
 
 | Flag | Default | |
 |---|---|---|
-| `-addr` | `:8080` | Address and port for `ws://`. With `-domain`, only listened on if given explicitly |
+| `-addr` | `:9876` | Address and port for `ws://`. With `-domain`, only listened on if given explicitly |
 | `-domain` | (off) | Serve `wss://` on 443 with an automatic Let's Encrypt certificate (uses 80 for the challenge). The domain must point at this server |
 | `-data-dir` | (memory only) | Where state is kept (computer identities, TURN secret, certificates). Required for TURN or a domain |
 | `-turn` | off | Enable TURN on 3478 |
@@ -133,7 +133,7 @@ systemctl daemon-reload && systemctl enable --now seedmux-relay
 
 | Port | Protocol | What | When |
 |---|---|---|---|
-| 8080 | TCP | Relay | `ws://IP` mode |
+| 9876 | TCP | Relay | `ws://IP` mode |
 | 443 | TCP | Relay | `wss://domain` mode |
 | 80 | TCP | Getting and renewing the certificate | `wss://domain` mode |
 | 3478 | UDP and TCP | TURN | With TURN |

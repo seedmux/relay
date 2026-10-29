@@ -13,7 +13,7 @@
 #
 # Options:
 #   --domain D       serve wss://D/ on 443 with an automatic certificate instead of ws://IP:PORT/
-#   --port N         port for ws:// (default 8080)
+#   --port N         port for ws:// (default 9876)
 #   --no-turn        leave TURN off (screen sharing then only works on the same network)
 #   --no-firewall    don't touch ufw / firewalld
 #   --no-service     install the binary only
@@ -27,7 +27,7 @@ export LC_ALL
 REPO="seedmux/relay"
 DOCS="https://github.com/$REPO/blob/main/docs/self-hosting.md"
 VERSION="latest"
-PORT=8080
+PORT=9876
 TURN=1
 DOMAIN=""
 FIREWALL=1

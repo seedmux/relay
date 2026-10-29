@@ -16,7 +16,7 @@ import (
 )
 
 func main() {
-	url := "ws://127.0.0.1:8080"
+	url := "ws://127.0.0.1:9876"
 	if len(os.Args) > 1 {
 		url = os.Args[1]
 	}

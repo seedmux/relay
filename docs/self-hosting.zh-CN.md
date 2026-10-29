@@ -7,7 +7,7 @@
 ## 安装脚本做了什么
 
 1. 按系统和 CPU 下载对应的程序,核对 `SHA256SUMS` 校验和,放到 `/usr/local/bin/seedmux-relay`。
-2. 用域名时,检查域名是不是指向这台服务器、80 和 443 有没有被别的程序占用;不用域名时,检查 8080 有没有被占用。开 TURN 时还检查 3478。
+2. 用域名时,检查域名是不是指向这台服务器、80 和 443 有没有被别的程序占用;不用域名时,检查 9876 有没有被占用。开 TURN 时还检查 3478。
 3. 写 systemd 服务 `/etc/systemd/system/seedmux-relay.service`,开机自启。数据放在 `/var/lib/seedmux-relay`。
 4. ufw 或 firewalld 开着的话,放行要用的端口。
 5. 等中继启动起来;用域名时顺便申请证书。启动失败就打印日志。
@@ -19,8 +19,8 @@
 
 | 选项 | 作用 |
 |---|---|
-| `--domain 你的域名` | 用 `wss://域名/`,不加就是 `ws://IP:8080/` |
-| `--port 9000` | `ws://` 换个端口(默认 8080) |
+| `--domain 你的域名` | 用 `wss://域名/`,不加就是 `ws://IP:9876/` |
+| `--port 9000` | `ws://` 换个端口(默认 9876) |
 | `--no-turn` | 不开 TURN(那样手机只能在同一个网络里看电脑屏幕) |
 | `--no-firewall` | 不动 ufw、firewalld |
 | `--no-service` | 只装程序,不装服务 |
@@ -28,13 +28,13 @@
 
 ## 放在 nginx 或 Caddy 后面
 
-服务器上已经有网站占着 443 时,用默认方式(不加 `--domain`)安装中继,再让 nginx 或 Caddy 把一个域名转给它。Seedmux 里填 `wss://你的域名/`,安全组里不用放行 8080。
+服务器上已经有网站占着 443 时,用默认方式(不加 `--domain`)安装中继,再让 nginx 或 Caddy 把一个域名转给它。Seedmux 里填 `wss://你的域名/`,安全组里不用放行 9876。
 
 Caddy(会自动申请证书):
 
 ```
 你的域名 {
-	reverse_proxy 127.0.0.1:8080
+	reverse_proxy 127.0.0.1:9876
 }
 ```
 
@@ -47,7 +47,7 @@ server {
     # ssl_certificate、ssl_certificate_key 照你现有的写
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:9876;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -71,7 +71,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/seedmux-relay -addr :8080 -data-dir /var/lib/seedmux-relay -turn
+ExecStart=/usr/local/bin/seedmux-relay -addr :9876 -data-dir /var/lib/seedmux-relay -turn
 DynamicUser=yes
 StateDirectory=seedmux-relay
 AmbientCapabilities=CAP_NET_BIND_SERVICE
@@ -103,7 +103,7 @@ systemctl daemon-reload && systemctl enable --now seedmux-relay
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `-addr` | `:8080` | `ws://` 监听的地址和端口。用了 `-domain` 时,只有明确写了才另外监听 |
+| `-addr` | `:9876` | `ws://` 监听的地址和端口。用了 `-domain` 时,只有明确写了才另外监听 |
 | `-domain` | (不用) | 在 443 上提供 `wss://`,自动申请、续期 Let's Encrypt 证书(还要用 80 做验证)。域名要指向这台服务器 |
 | `-data-dir` | (只存内存) | 存数据的目录(电脑的身份记录、TURN 密钥、证书)。开 TURN 或用域名时必填 |
 | `-turn` | 关 | 打开 TURN,监听 3478 |
@@ -123,7 +123,7 @@ systemctl daemon-reload && systemctl enable --now seedmux-relay
 
 | 端口 | 协议 | 用途 | 什么时候要 |
 |---|---|---|---|
-| 8080 | TCP | 中继 | `ws://IP` 模式 |
+| 9876 | TCP | 中继 | `ws://IP` 模式 |
 | 443 | TCP | 中继 | `wss://域名` 模式 |
 | 80 | TCP | 申请、续期证书 | `wss://域名` 模式 |
 | 3478 | UDP 和 TCP | TURN | 开 TURN 时 |

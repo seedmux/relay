@@ -637,7 +637,7 @@ func setupMux(r *relay) *http.ServeMux {
 }
 
 func main() {
-	addr := flag.String("addr", ":8080", "plain HTTP listen address (with -domain: only used if given explicitly)")
+	addr := flag.String("addr", ":9876", "plain HTTP listen address (with -domain: only used if given explicitly)")
 	domain := flag.String("domain", "", "serve HTTPS on :443 with an automatic Let's Encrypt certificate for this domain (also listens on :80 for the certificate challenge)")
 	turnOn := flag.Bool("turn", false, "enable TURN on :3478 (shorthand for -turn-listen :3478)")
 	showVersion := flag.Bool("version", false, "print the version and exit")

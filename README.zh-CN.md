@@ -12,14 +12,16 @@
 | | `ws://IP` | `wss://域名` |
 |---|---|---|
 | 需要 | 一台有公网 IP 的 Linux 服务器 | 再加一个域名,A 记录指向这台服务器 |
-| 填进 Seedmux 的地址 | `ws://服务器IP:8080/` | `wss://域名/` |
-| 中继用的端口 | TCP 8080 | TCP 443,外加 TCP 80(申请证书用) |
+| 填进 Seedmux 的地址 | `ws://服务器IP:9876/` | `wss://域名/` |
+| 中继用的端口 | TCP 9876 | TCP 443,外加 TCP 80(申请证书用) |
 | 证书 | 不需要 | 自动申请、自动续期 |
 | 手机、电脑到中继这一段 | 不加密(内容本身已经端到端加密) | TLS 加密 |
 
 两种模式都带 TURN,另外用 UDP 和 TCP 3478、UDP 50000–50999。
 
-**怎么选**:没有域名就用 `ws://IP`,装好就能用。有域名就用 `wss://域名`:443 端口几乎哪里都放行,而有些手机网络、公司网络会拦住或者掐断 8080 这类端口上的明文连接,这时 `wss://` 更稳。
+**怎么选**:没有域名就用 `ws://IP`,装好就能用。有域名就用 `wss://域名`:443 端口几乎哪里都放行,而有些公司网络只放行 443,这时 `wss://` 更稳。
+
+**服务器在中国大陆**:云厂商会对 80、443、8080 这类常用网页端口查备案,没备案的域名会被拦。所以中继默认用 9876 端口。`wss://域名` 模式要用 80 和 443,域名得先备案;没备案就用 `ws://IP`,或者换香港、海外的服务器。
 
 ## 安装
 
@@ -34,7 +36,7 @@ curl -fsSL https://github.com/seedmux/relay/releases/latest/download/install.sh 
 装完显示(IP 是脚本自己查出来的):
 
 ```
-  Put this address in Seedmux:  ws://203.0.113.7:8080/
+  Put this address in Seedmux:  ws://203.0.113.7:9876/
 ```
 
 ### `wss://域名`
@@ -70,7 +72,7 @@ curl -fsSL https://github.com/seedmux/relay/releases/latest/download/install.sh 
 
 ## 检查
 
-- 浏览器打开 `http://服务器IP:8080/health`(域名模式打开 `https://你的域名/health`),显示 `{"ok":true}` 就说明中继在运行。
+- 浏览器打开 `http://服务器IP:9876/health`(域名模式打开 `https://你的域名/health`),显示 `{"ok":true}` 就说明中继在运行。
 - 手机关掉 Wi-Fi、用流量,在 Seedmux 里打开电脑的屏幕:画面左下角的绿字会显示连接状态和收到的帧数。
 
 ## 自己编译
@@ -80,15 +82,15 @@ curl -fsSL https://github.com/seedmux/relay/releases/latest/download/install.sh 
 ```sh
 git clone https://github.com/seedmux/relay && cd relay
 go build -o seedmux-relay .
-./seedmux-relay -addr :8080 -data-dir ./data -turn
+./seedmux-relay -addr :9876 -data-dir ./data -turn
 ```
 
-这样就是 `ws://IP:8080/`。要用域名,把 `-addr :8080` 换成 `-domain 你的域名`。
+这样就是 `ws://IP:9876/`。要用域名,把 `-addr :9876` 换成 `-domain 你的域名`。
 
 macOS、Windows、FreeBSD 也可以在 [Releases](https://github.com/seedmux/relay/releases) 直接下载编好的程序,参数一样。Docker:
 
 ```sh
-docker run -d --restart unless-stopped --network host -v seedmux-relay:/data ghcr.io/seedmux/relay -addr :8080 -turn
+docker run -d --restart unless-stopped --network host -v seedmux-relay:/data ghcr.io/seedmux/relay -addr :9876 -turn
 ```
 
 手动配 systemd、全部参数、排查问题,见 [docs/self-hosting.zh-CN.md](docs/self-hosting.zh-CN.md)。

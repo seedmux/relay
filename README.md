@@ -15,16 +15,21 @@ connects them through a relay. Use the official one, or run your own on a server
 | | `ws://IP` | `wss://domain` |
 |---|---|---|
 | You need | A Linux server with a public IP | Plus a domain whose A record points at the server |
-| Address to put in Seedmux | `ws://SERVER_IP:8080/` | `wss://DOMAIN/` |
-| Relay ports | TCP 8080 | TCP 443, plus TCP 80 (for the certificate) |
+| Address to put in Seedmux | `ws://SERVER_IP:9876/` | `wss://DOMAIN/` |
+| Relay ports | TCP 9876 | TCP 443, plus TCP 80 (for the certificate) |
 | Certificate | None needed | Obtained and renewed automatically |
 | Phone/computer to relay | Not encrypted (the content itself is end-to-end encrypted) | TLS |
 
 Both modes include TURN, which also uses UDP and TCP 3478 and UDP 50000–50999.
 
 **Which one**: no domain — use `ws://IP`; it works as soon as it is installed. Have a
-domain — use `wss://domain`: port 443 is open almost everywhere, while some mobile and
-office networks block or cut plain connections on ports like 8080.
+domain — use `wss://domain`: port 443 is open almost everywhere, and some office networks
+allow nothing else.
+
+**Servers in mainland China**: cloud providers check the ICP filing on common web ports
+such as 80, 443 and 8080 and block domains without one — that's why the relay defaults to
+port 9876. `wss://domain` mode needs 80 and 443, so the domain must be ICP-filed; without
+a filing, use `ws://IP` or a server outside the mainland (e.g. Hong Kong).
 
 ## Install
 
@@ -41,7 +46,7 @@ curl -fsSL https://github.com/seedmux/relay/releases/latest/download/install.sh 
 When it finishes (it finds the IP itself):
 
 ```
-  Put this address in Seedmux:  ws://203.0.113.7:8080/
+  Put this address in Seedmux:  ws://203.0.113.7:9876/
 ```
 
 ### `wss://domain`
@@ -86,7 +91,7 @@ Official Relay**).
 
 ## Check
 
-- Open `http://SERVER_IP:8080/health` in a browser (with a domain,
+- Open `http://SERVER_IP:9876/health` in a browser (with a domain,
   `https://YOUR_DOMAIN/health`): `{"ok":true}` means the relay is running.
 - Turn off Wi-Fi on the phone and open the computer's screen in Seedmux over mobile data:
   the green line in the bottom-left corner shows the connection and how many frames arrive.
@@ -98,17 +103,17 @@ For when you have no Linux server or don't want the installer. Go 1.26 or newer:
 ```sh
 git clone https://github.com/seedmux/relay && cd relay
 go build -o seedmux-relay .
-./seedmux-relay -addr :8080 -data-dir ./data -turn
+./seedmux-relay -addr :9876 -data-dir ./data -turn
 ```
 
-That gives you `ws://IP:8080/`. For a domain, replace `-addr :8080` with
+That gives you `ws://IP:9876/`. For a domain, replace `-addr :9876` with
 `-domain YOUR_DOMAIN`.
 
 For macOS, Windows and FreeBSD you can also download a ready-made binary from
 [Releases](https://github.com/seedmux/relay/releases) and use the same flags. Docker:
 
 ```sh
-docker run -d --restart unless-stopped --network host -v seedmux-relay:/data ghcr.io/seedmux/relay -addr :8080 -turn
+docker run -d --restart unless-stopped --network host -v seedmux-relay:/data ghcr.io/seedmux/relay -addr :9876 -turn
 ```
 
 Manual systemd setup, all flags and troubleshooting: [docs/self-hosting.md](docs/self-hosting.md).
