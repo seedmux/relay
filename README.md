@@ -2,87 +2,82 @@
 
 English | [中文](README.zh-CN.md)
 
-The relay that connects the [Seedmux](https://seedmux.com) desktop app (and its
-`smx` daemon) with Seedmux on iPhone when they are not on the same network.
-Run your own and point your machines at it, or use the official one.
+When your phone and your computer are on different networks, [Seedmux](https://seedmux.com)
+connects them through a relay. Use the official one or run your own.
 
-- **Forwards, never reads.** Phone and desktop pair with an X25519 key exchange and
-  encrypt every message end to end (XChaCha20-Poly1305). The relay only sees the
-  outer frame envelope: who talks to whom and how much. It cannot read terminals,
-  chats or screens.
-- **TURN built in.** When phone and desktop cannot connect directly (mobile
-  networks are usually symmetric NAT), the screen-sharing WebRTC stream is relayed
-  through the relay's TURN server. Credentials are short-lived and only handed to
-  verified desktops.
-- **Push notifications** (official relay only): the relay can forward APNs pushes
-  for the Seedmux iOS app on a desktop's behalf. A self-hosted relay has no Apple
-  key, so leave the `-apns-*` flags off.
+- **Forwards, can't read**: messages between phone and computer are end-to-end
+  encrypted; the relay only passes them on and cannot see terminals, chats or screens.
+- **TURN built in**: when the phone views the computer's screen over mobile data and a
+  direct connection is impossible, the video goes through the relay.
 
-## Install
+## Quick install (Linux)
 
-You need a server with a public IP and a domain (or subdomain) whose DNS **A record** points at it.
-
-**One line (Linux, recommended).** Installs the binary, sets up a systemd service with
-automatic HTTPS (Let's Encrypt) and TURN, and starts it:
+On the server:
 
 ```sh
-curl -fsSL https://github.com/seedmux/relay/releases/latest/download/install.sh | sudo sh -s -- --domain relay.example.com
+curl -fsSL https://github.com/seedmux/relay/releases/latest/download/install.sh | sudo sh
 ```
 
-**Docker.** Host networking, so the TURN port range does not have to be published:
+It downloads the relay, installs it as a service that starts on boot, enables TURN, and
+prints the relay address, for example:
 
-```sh
-docker run -d --name seedmux-relay --restart unless-stopped --network host \
-  -v seedmux-relay:/data ghcr.io/seedmux/relay -domain relay.example.com -turn
+```
+Relay address to put in Seedmux:  ws://203.0.113.7:8080/
 ```
 
-**Binary.** Download `seedmux-relay-<os>-<arch>` for Linux, macOS, Windows or FreeBSD
-(amd64 / arm64) from [Releases](https://github.com/seedmux/relay/releases), check it
-against `SHA256SUMS`, then:
-
-```sh
-seedmux-relay -domain relay.example.com -data-dir /var/lib/seedmux-relay -turn
-```
-
-**From source** (fallback): Go 1.26 or newer, `go build -o seedmux-relay .`
+Put that address in the computer's relay setting in Seedmux, or in that computer's
+`smx.toml`: `relay = "ws://203.0.113.7:8080/"`.
 
 Open these ports in the firewall and in your cloud provider's security group:
 
 | Port | Protocol | What |
 |---|---|---|
-| 80 | TCP | Let's Encrypt certificate challenge |
-| 443 | TCP | Relay (WebSocket over TLS) |
+| 8080 | TCP | Relay |
 | 3478 | UDP and TCP | TURN |
 | 50000–50999 | UDP | TURN relayed traffic |
 
-Then point a machine at it: set the machine's relay in Seedmux on the Mac (host
-settings), or put `relay = "wss://relay.example.com/"` in that machine's `smx.toml`.
+Installer options (after `sudo sh -s --`): `--port 9000` to use another port,
+`--no-turn` to leave TURN off.
 
-Already running a reverse proxy (Caddy, nginx) on 443? Leave out `-domain`, listen on
-loopback with `-addr 127.0.0.1:8080` behind the proxy, and give TURN the public IP with
-`-turn -turn-public-ip <ip>`. See [docs/self-hosting.md](docs/self-hosting.md) for every flag.
+## Build it yourself
 
-## Security model
+Go 1.26 or newer:
 
-- **Desktop identity, trust on first use.** A desktop sends a random relay key
-  with its first frame. The relay remembers its hash per device ID
-  (`<data-dir>/desktop-keys.json`); later connections claiming that device ID must
-  present the same key. This stops anyone from taking over a desktop's slot, its
-  push quota or its TURN quota. Older desktops without a key are still accepted
-  (unverified, no TURN) unless you run with `-require-desktop-key`.
-- **TURN cannot reach private networks.** Allocations may only relay to public
-  unicast addresses; loopback, RFC 1918, link-local (including cloud metadata),
-  CGNAT, multicast and unspecified peers are refused. Each desktop has a cap on
-  concurrent allocations. Credentials use the TURN REST scheme
-  (`<expiry>:<device ID>`, HMAC-SHA1 with a secret in `<data-dir>/turn-secret`).
-- **Abuse limits.** Connections must authenticate within 15 seconds; at most 64
-  concurrent connections per client IP (behind a proxy on the same machine, the
-  proxy's `X-Forwarded-For` is used); push forwarding is limited to desktops,
-  60 per minute each, 4 KB per notification. Pairing tokens are never logged.
+```sh
+git clone https://github.com/seedmux/relay && cd relay
+go build -o seedmux-relay .
+./seedmux-relay -addr :8080 -data-dir ./data -turn
+```
 
-Found a vulnerability? Please report it privately through GitHub (**Security → Report a vulnerability** on this repository) instead of opening an issue.
+For macOS, Windows and FreeBSD you can also download a ready-made binary from
+[Releases](https://github.com/seedmux/relay/releases) and run the same command.
+
+## Optional
+
+- **Domain and HTTPS**: if you have a domain whose DNS points at the server, add
+  `--domain your.domain` to the installer (or `-domain your.domain` to the command). The
+  relay gets a certificate automatically and serves `wss://your.domain/` on 443; open TCP
+  80 and 443.
+- **Docker**: `docker run -d --restart unless-stopped --network host -v seedmux-relay:/data ghcr.io/seedmux/relay -addr :8080 -turn`
+- **All flags and a systemd unit**: [docs/self-hosting.md](docs/self-hosting.md)
+
+## Security
+
+- **Computer identity**: on its first connection a computer presents its own key and the
+  relay remembers it; anyone later claiming to be that computer is refused.
+- **TURN can't reach private networks**: it only relays to public addresses — loopback,
+  private ranges and cloud metadata addresses are refused — with a per-computer cap.
+- **Abuse limits**: authenticate within 15 seconds; at most 64 connections per IP;
+  pairing codes are never logged.
+- **`ws://` vs `wss://`**: content is end-to-end encrypted either way. With `ws://` the
+  computer's identity key crosses the network in plain text, so someone who can see your
+  traffic could use it to impersonate that computer and keep it off the relay (still
+  without seeing any content). If that matters, use a domain with HTTPS.
+
+Found a vulnerability? Report it privately via **Security → Report a vulnerability** on
+this repository instead of opening an issue.
 
 ## License
 
-[AGPL-3.0](LICENSE). If you run a modified relay as a service for others, you
-must offer them its source.
+[AGPL-3.0](LICENSE). If you run a modified relay as a service for others, you must offer
+them its source.

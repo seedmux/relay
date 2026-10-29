@@ -641,6 +641,7 @@ func main() {
 	domain := flag.String("domain", "", "serve HTTPS on :443 with an automatic Let's Encrypt certificate for this domain (also listens on :80 for the certificate challenge)")
 	turnOn := flag.Bool("turn", false, "enable TURN on :3478 (shorthand for -turn-listen :3478)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	showPublicIP := flag.Bool("public-ip", false, "print this server's public IP (as seen by public STUN servers) and exit")
 	apnsKeyPath := flag.String("apns-key-path", "", "path to APNs .p8 auth key (enables APNs push forwarding)")
 	apnsKeyID := flag.String("apns-key-id", "", "APNs Key ID (from Apple Developer)")
 	apnsTeamID := flag.String("apns-team-id", "", "Apple Team ID")
@@ -659,6 +660,17 @@ func main() {
 	if *showVersion {
 		fmt.Println(version)
 		return
+	}
+	if *showPublicIP {
+		ip, err := detectPublicIP()
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(ip)
+		return
+	}
+	if placeholderDomain(*domain) {
+		log.Fatalf("[relay] -domain %s is an example: use a domain you own whose DNS A record points at this server, or leave -domain out and use ws://<ip>:<port>", *domain)
 	}
 	addrGiven := false
 	flag.Visit(func(f *flag.Flag) { addrGiven = addrGiven || f.Name == "addr" })
@@ -693,8 +705,14 @@ func main() {
 			// The domain points at this server: its address is the public IP
 			ip = lookupIPv4(*domain)
 		}
+		if ip == nil && *turnPublicIP == "" {
+			// No domain either: ask public STUN servers which address we have
+			if ip, err = detectPublicIP(); err != nil {
+				log.Fatalf("[relay] %v", err)
+			}
+		}
 		if ip == nil {
-			log.Fatal("[relay] TURN needs the server's public IP: set -turn-public-ip (or -domain pointing at this server)")
+			log.Fatalf("[relay] -turn-public-ip %q is not an IP address", *turnPublicIP)
 		}
 		if *turnHost == "" {
 			*turnHost = *domain
