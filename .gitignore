@@ -1,0 +1,10 @@
+# Compiled binaries
+/relay
+/relay-srv
+/relay-bench
+/relay-linux-amd64
+*.exe
+/seedmux-relay
+/data/
+*.p8
+/.build/
