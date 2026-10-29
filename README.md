@@ -1,5 +1,7 @@
 # Seedmux Relay
 
+English | [中文](README.zh-CN.md)
+
 The relay that connects the [Seedmux](https://seedmux.com) desktop app (and its
 `smx` daemon) with Seedmux on iPhone when they are not on the same network.
 Run your own and point your machines at it, or use the official one.

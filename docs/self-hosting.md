@@ -1,5 +1,7 @@
 # Self-hosting the relay
 
+English | [中文](self-hosting.zh-CN.md)
+
 ## Build
 
 Go 1.24 or newer.
