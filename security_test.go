@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/pion/turn/v5"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -243,20 +244,89 @@ func TestTurnPermissionsBlockPrivatePeers(t *testing.T) {
 	}
 }
 
-// Quota: a desktop cannot hold more than MaxAllocations at once
-func TestTurnQuota(t *testing.T) {
-	svc := &turnService{cfg: turnConfig{MaxAllocations: 2}, allocs: map[string]int{}}
-	user := "9999999999:d1"
-	svc.countAllocation("d1", 1)
-	if !svc.underQuota(user, "", nil) {
-		t.Fatal("one allocation is under quota")
+// Quota, through a real pion client: credentials allocate, a desktop cannot hold more than
+// MaxAllocations at once, and a released allocation frees its slot. (Calling underQuota by hand
+// once hid that pion passes it the device ID, not the username: every allocation got 486.)
+func TestTurnAllocateAndQuota(t *testing.T) {
+	// URLs carry the configured port, so take a real free one rather than :0
+	probe, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
 	}
-	svc.countAllocation("d1", 1)
-	if svc.underQuota(user, "", nil) {
-		t.Fatal("two allocations reach the quota of 2")
+	listen := probe.LocalAddr().String()
+	probe.Close()
+	svc, err := startTURN(turnConfig{
+		Listen: listen, PublicIP: net.ParseIP("127.0.0.1"), PortMin: 51020, PortMax: 51040,
+		Secret: strings.Repeat("s", 40), TTL: time.Hour, MaxAllocations: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	svc.countAllocation("d1", -1)
-	if !svc.underQuota(user, "", nil) {
-		t.Fatal("after one is released the desktop is under quota again")
+	defer svc.Close()
+	creds := svc.credentials("d1")
+	server := strings.TrimPrefix(strings.Split(creds.URLs[0], "?")[0], "turn:")
+	allocate := func() (net.PacketConn, func(), error) {
+		conn, err := net.ListenPacket("udp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		client, err := turn.NewClient(&turn.ClientConfig{STUNServerAddr: server, TURNServerAddr: server, Conn: conn,
+			Username: creds.Username, Password: creds.Credential})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := client.Listen(); err != nil {
+			t.Fatal(err)
+		}
+		relayed, err := client.Allocate()
+		closeAll := func() {
+			if relayed != nil {
+				relayed.Close()
+			}
+			client.Close()
+			conn.Close()
+		}
+		return relayed, closeAll, err
+	}
+	first, closeFirst, err := allocate()
+	if err != nil {
+		t.Fatalf("first allocation: %v", err)
+	}
+	if addr := first.LocalAddr().(*net.UDPAddr); addr.Port < 51020 || addr.Port > 51040 {
+		t.Fatalf("relayed address outside the port range: %v", addr)
+	}
+	_, closeSecond, err := allocate()
+	if err != nil {
+		t.Fatalf("second allocation: %v", err)
+	}
+	defer closeSecond()
+	if _, closeThird, err := allocate(); err == nil || !strings.Contains(err.Error(), "486") {
+		closeThird()
+		t.Fatalf("third allocation should hit the quota of 2, got %v", err)
+	}
+	closeFirst() // releases its slot (Refresh lifetime 0)
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		_, closeAgain, err := allocate()
+		if err == nil {
+			closeAgain()
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("a released allocation should free its slot: %v", err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	// Wrong password: rejected before any quota check
+	bad := creds
+	bad.Credential = "nope"
+	conn, _ := net.ListenPacket("udp4", "127.0.0.1:0")
+	defer conn.Close()
+	client, _ := turn.NewClient(&turn.ClientConfig{STUNServerAddr: server, TURNServerAddr: server, Conn: conn,
+		Username: bad.Username, Password: bad.Credential})
+	defer client.Close()
+	_ = client.Listen()
+	if _, err := client.Allocate(); err == nil {
+		t.Fatal("wrong password must not allocate")
 	}
 }

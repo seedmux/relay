@@ -169,9 +169,10 @@ func parseTurnUsername(username string) (expiry int64, deviceID string, ok bool)
 	return expiry, id, true
 }
 
-func (t *turnService) underQuota(username, _ string, _ net.Addr) bool {
-	_, deviceID, ok := parseTurnUsername(username)
-	if !ok {
+// underQuota: pion passes the userID authenticate returned (the device ID), not the raw
+// "expiry:deviceID" username — the same key the allocation events count under.
+func (t *turnService) underQuota(deviceID, _ string, _ net.Addr) bool {
+	if deviceID == "" {
 		return false
 	}
 	t.mu.Lock()

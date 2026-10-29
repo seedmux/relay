@@ -99,6 +99,9 @@ ExecStart=/usr/local/bin/seedmux-relay -domain 你的域名 -data-dir /var/lib/s
 systemctl daemon-reload && systemctl enable --now seedmux-relay
 ```
 
+想再加固、写了 `RestrictAddressFamilies=` 的话,除了 `AF_INET AF_INET6` 还要带上 `AF_NETLINK`:TURN 启动时要列网卡,
+少了它会报 `netlinkrib: address family not supported by protocol` 然后起不来。
+
 ## 参数
 
 | 参数 | 默认 | 说明 |

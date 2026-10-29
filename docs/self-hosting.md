@@ -109,6 +109,10 @@ Then:
 systemctl daemon-reload && systemctl enable --now seedmux-relay
 ```
 
+If you harden it further with `RestrictAddressFamilies=`, include `AF_NETLINK` besides `AF_INET AF_INET6`:
+TURN lists the network interfaces at startup and otherwise fails with
+`netlinkrib: address family not supported by protocol`.
+
 ## Flags
 
 | Flag | Default | |
