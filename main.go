@@ -16,6 +16,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/seedmux/relay/internal/apnsclient"
 	"github.com/seedmux/relay/sdproto"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 func fmtRelayBytes(n int) string {
@@ -82,6 +83,9 @@ func defaultOptions() relayOptions {
 }
 
 const maxFrameSize = 32 * 1024 * 1024 // 32MB
+
+// version is set at build time (-ldflags "-X main.version=v1.2.3")
+var version = "dev"
 
 // maxApnsPayload: Apple rejects notification payloads above 4 KB anyway
 const maxApnsPayload = 4096
@@ -633,7 +637,10 @@ func setupMux(r *relay) *http.ServeMux {
 }
 
 func main() {
-	addr := flag.String("addr", ":8080", "listen address")
+	addr := flag.String("addr", ":8080", "plain HTTP listen address (with -domain: only used if given explicitly)")
+	domain := flag.String("domain", "", "serve HTTPS on :443 with an automatic Let's Encrypt certificate for this domain (also listens on :80 for the certificate challenge)")
+	turnOn := flag.Bool("turn", false, "enable TURN on :3478 (shorthand for -turn-listen :3478)")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	apnsKeyPath := flag.String("apns-key-path", "", "path to APNs .p8 auth key (enables APNs push forwarding)")
 	apnsKeyID := flag.String("apns-key-id", "", "APNs Key ID (from Apple Developer)")
 	apnsTeamID := flag.String("apns-team-id", "", "Apple Team ID")
@@ -649,6 +656,18 @@ func main() {
 	turnTTL := flag.Duration("turn-ttl", 12*time.Hour, "lifetime of TURN credentials")
 	turnMaxAllocs := flag.Int("turn-max-allocations", 16, "concurrent TURN allocations per desktop")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
+	addrGiven := false
+	flag.Visit(func(f *flag.Flag) { addrGiven = addrGiven || f.Name == "addr" })
+	if *turnOn && *turnListen == "" {
+		*turnListen = ":3478"
+	}
+	if *domain != "" && *dataDir == "" {
+		log.Fatal("[relay] -domain needs -data-dir (certificates are kept there)")
+	}
 
 	opts := defaultOptions()
 	opts.RequireDesktopKey = *requireKey
@@ -670,8 +689,15 @@ func main() {
 			log.Fatal("[relay] -turn-listen needs -data-dir (the TURN secret must survive restarts)")
 		}
 		ip := net.ParseIP(*turnPublicIP)
+		if ip == nil && *turnPublicIP == "" && *domain != "" {
+			// The domain points at this server: its address is the public IP
+			ip = lookupIPv4(*domain)
+		}
 		if ip == nil {
-			log.Fatal("[relay] -turn-listen needs a valid -turn-public-ip")
+			log.Fatal("[relay] TURN needs the server's public IP: set -turn-public-ip (or -domain pointing at this server)")
+		}
+		if *turnHost == "" {
+			*turnHost = *domain
 		}
 		min, max, err := parsePortRange(*turnPorts)
 		if err != nil {
@@ -711,8 +737,45 @@ func main() {
 
 	mux := setupMux(r)
 
-	slog.Info("[relay] listening", "addr", *addr, "require_desktop_key", opts.RequireDesktopKey)
-	log.Fatal(http.ListenAndServe(*addr, mux))
+	slog.Info("[relay] starting", "version", version, "require_desktop_key", opts.RequireDesktopKey)
+	if *domain == "" {
+		slog.Info("[relay] listening", "addr", *addr)
+		log.Fatal(newServer(*addr, mux).ListenAndServe())
+	}
+
+	// Automatic HTTPS: no reverse proxy needed. Port 80 answers Let's Encrypt's
+	// challenge and redirects everything else to https.
+	certs := &autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		HostPolicy: autocert.HostWhitelist(*domain),
+		Cache:      autocert.DirCache(filepath.Join(*dataDir, "certs")),
+	}
+	go func() { log.Fatal(newServer(":80", certs.HTTPHandler(nil)).ListenAndServe()) }()
+	if addrGiven {
+		// Extra plain listener, e.g. for clients that still use ws://host:8080
+		go func() { log.Fatal(newServer(*addr, mux).ListenAndServe()) }()
+	}
+	server := newServer(":443", mux)
+	server.TLSConfig = certs.TLSConfig()
+	slog.Info("[relay] listening", "https", *domain)
+	log.Fatal(server.ListenAndServeTLS("", ""))
+}
+
+func newServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+}
+
+func lookupIPv4(host string) net.IP {
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return nil
+	}
+	for _, ip := range ips {
+		if v4 := ip.To4(); v4 != nil {
+			return v4
+		}
+	}
+	return nil
 }
 
 // keepTurnCredentials hands a verified desktop TURN credentials now and again

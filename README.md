@@ -18,40 +18,49 @@ Run your own and point your machines at it, or use the official one.
   for the Seedmux iOS app on a desktop's behalf. A self-hosted relay has no Apple
   key, so leave the `-apns-*` flags off.
 
-## Quick start
+## Install
+
+You need a server with a public IP and a domain (or subdomain) whose DNS **A record** points at it.
+
+**One line (Linux, recommended).** Installs the binary, sets up a systemd service with
+automatic HTTPS (Let's Encrypt) and TURN, and starts it:
 
 ```sh
-go build -o seedmux-relay .
-./seedmux-relay -addr 127.0.0.1:8080 -data-dir ./data
+curl -fsSL https://github.com/seedmux/relay/releases/latest/download/install.sh | sudo sh -s -- --domain relay.example.com
 ```
 
-Put a TLS reverse proxy in front of it (WebSocket upgrade passes through as is):
+**Docker.** Host networking, so the TURN port range does not have to be published:
 
-```caddy
-relay.example.com {
-	reverse_proxy 127.0.0.1:8080
-}
+```sh
+docker run -d --name seedmux-relay --restart unless-stopped --network host \
+  -v seedmux-relay:/data ghcr.io/seedmux/relay -domain relay.example.com -turn
 ```
+
+**Binary.** Download `seedmux-relay-<os>-<arch>` for Linux, macOS, Windows or FreeBSD
+(amd64 / arm64) from [Releases](https://github.com/seedmux/relay/releases), check it
+against `SHA256SUMS`, then:
+
+```sh
+seedmux-relay -domain relay.example.com -data-dir /var/lib/seedmux-relay -turn
+```
+
+**From source** (fallback): Go 1.26 or newer, `go build -o seedmux-relay .`
+
+Open these ports in the firewall and in your cloud provider's security group:
+
+| Port | Protocol | What |
+|---|---|---|
+| 80 | TCP | Let's Encrypt certificate challenge |
+| 443 | TCP | Relay (WebSocket over TLS) |
+| 3478 | UDP and TCP | TURN |
+| 50000–50999 | UDP | TURN relayed traffic |
 
 Then point a machine at it: set the machine's relay in Seedmux on the Mac (host
 settings), or put `relay = "wss://relay.example.com/"` in that machine's `smx.toml`.
 
-With TURN (so screen sharing works over mobile data):
-
-```sh
-./seedmux-relay -addr 127.0.0.1:8080 -data-dir /var/lib/seedmux-relay \
-  -turn-listen :3478 -turn-public-ip 203.0.113.7 -turn-host relay.example.com
-```
-
-Open these ports to the internet:
-
-| Port | Protocol | What |
-|---|---|---|
-| 443 (your proxy) | TCP | WebSocket over TLS |
-| `-turn-listen` (e.g. 3478) | UDP and TCP | TURN |
-| `-turn-ports` (default 50000–50999) | UDP | TURN relayed traffic |
-
-See [docs/self-hosting.md](docs/self-hosting.md) for a systemd unit and all flags.
+Already running a reverse proxy (Caddy, nginx) on 443? Leave out `-domain`, listen on
+loopback with `-addr 127.0.0.1:8080` behind the proxy, and give TURN the public IP with
+`-turn -turn-public-ip <ip>`. See [docs/self-hosting.md](docs/self-hosting.md) for every flag.
 
 ## Security model
 
